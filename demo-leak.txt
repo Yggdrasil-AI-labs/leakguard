@@ -1,0 +1,4 @@
+# SYNTHETIC leakguard PR-comment demo. Throwaway branch, do NOT merge.
+# These trip medium-severity rules without being real provider secrets.
+db_host = 10.4.12.9
+api_key = "hardcoded12345"
