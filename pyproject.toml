@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leakguard"
-version = "0.1.0"
+version = "0.2.0"
 description = "Detect internal identifiers, secrets, and PII before they leak into public artifacts."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "Zach B." }]
-keywords = ["security", "secrets", "pii", "pre-commit", "disclosure", "scanner", "ci"]
+keywords = ["security", "secrets", "pii", "pre-commit", "disclosure", "scanner", "ci", "sarif"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

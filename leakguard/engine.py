@@ -18,6 +18,9 @@ Private rules file format (JSON):
   }
 `allow` entries are literal strings; any match equal to an allow entry is dropped
 (e.g. public codenames that look like internal names but are intentionally public).
+
+An optional "entropy" object in the same file configures opt-in high-entropy
+detection (see leakguard/entropy.py); it is ignored here.
 """
 import json
 import os
@@ -40,6 +43,7 @@ class Finding:
     match: str
     message: str
     suggestion: str
+    commit: str = ""  # short SHA when produced by a git-history scan; "" otherwise
 
     def as_dict(self):
         return asdict(self)

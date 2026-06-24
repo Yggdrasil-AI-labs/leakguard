@@ -2,10 +2,12 @@
 
 Catch internal identifiers, secrets, and PII before they leak into public
 artifacts. leakguard scans local files, git staged content (as a pre-commit
-hook), and already-published GitHub repos, then reports each hit with a line
-reference and a suggested fix. It is detection-only: it never edits your content.
+hook), the full git history, and already-published GitHub repos, then reports
+each hit with a line reference and a suggested fix. It is detection-only: it
+never edits your content. The core is pure Python standard library, **zero
+runtime dependencies** (optional AI layers are installed separately).
 
-## The safety model
+## The safety model (and why this niche exists)
 
 The thing most likely to leak from a secret-scanner is its own rule list, because
 that list is an inventory of exactly what you are trying to hide. leakguard is
@@ -15,11 +17,37 @@ built so that never happens:
   private-key blocks, RFC1918 / CGNAT addresses, common token formats). These
   contain no organization-specific values.
 - Your **organization-specific patterns** (internal hostnames, private project
-  names, people, locations) live in a **private rules file you keep out of version
-  control**. leakguard loads it at runtime. It is gitignored by default.
+  names, people, locations) live in a **private rules file you keep out of
+  version control**. leakguard loads it at runtime. It is gitignored by default.
 
-So the public tool is useful out of the box, and your real pattern list stays
-local.
+This is the disclosure-control angle most scanners miss. Generic secret scanners
+answer "did I commit an AWS key?" leakguard also answers "did I leak the name of
+an internal host, an unreleased project, or a person?" — the things that turn a
+clean-looking public repo, blog post, or AI-generated draft into an attribution
+trail. That second question is exactly what you cannot answer with a public rule
+list, so leakguard splits the engine (public) from the inventory (private).
+
+It pairs naturally with AI-assisted writing and code generation, where internal
+identifiers slip into "helpful" output: run leakguard over generated artifacts
+before they ship. Optional local AI layers (`leakguard[ai]`) add a Presidio PII
+pass and a local-LLM reviewer on top of the regex engine; see below.
+
+## How it compares
+
+| | leakguard | gitleaks | trufflehog | detect-secrets |
+|---|---|---|---|---|
+| Generic secret patterns | yes | yes | yes | yes |
+| **Private org-identifier rules, kept out of the repo** | **yes** | no | no | no |
+| Disclosure / PII (hostnames, project names, people) | yes | partial | no | partial |
+| Git-history scan | yes | yes | yes | yes |
+| Entropy detection | yes (opt-in) | yes | yes | yes |
+| SARIF / GitHub code scanning | yes | yes | partial | no |
+| pre-commit framework hook | yes | yes | yes | yes |
+| Core runtime dependencies | **none** | Go binary | Go binary | Python deps |
+
+leakguard is not trying to out-detect the big scanners on raw credential shapes.
+The point is the private-inventory model and disclosure coverage, in a single
+stdlib-only core you can read end to end and drop into any CI.
 
 ## Install
 
@@ -27,7 +55,7 @@ local.
 pip install leakguard         # or: pip install . from a clone
 ```
 
-Python 3.8+, standard library only (no runtime dependencies).
+Python 3.8+, standard library only (the core has no runtime dependencies).
 
 The optional AI layers add dependencies and are installed separately:
 
@@ -50,6 +78,21 @@ Scan only what is staged for commit (used by the pre-commit hook):
 leakguard scan --staged
 ```
 
+Scan the full git history — finds secrets that were committed and later removed
+(each finding is tagged with the short SHA of the commit it was seen in):
+
+```
+leakguard scan --history
+leakguard scan --history --since v1.0.0      # only commits in v1.0.0..HEAD
+```
+
+Also flag high-entropy strings that no pattern matched (opt-in; see below):
+
+```
+leakguard scan . --entropy
+leakguard scan . --entropy --entropy-threshold 4.5
+```
+
 Audit published repos read-only (an org, a user, or specific repos):
 
 ```
@@ -59,7 +102,8 @@ leakguard github --repo owner/name --repo owner/other
 
 Exit code is `0` when clean (or only findings below the threshold) and `1` when
 there are findings at or above `--fail-on` (default `medium`), which is what makes
-it usable as a CI gate. `--format json` emits machine-readable output.
+it usable as a CI gate. `--format json` emits machine-readable output, and
+`--format sarif` emits SARIF 2.1.0 for GitHub code scanning.
 
 ## Private rules
 
@@ -81,6 +125,25 @@ gitignored. Format:
 `pattern` is a Python regular expression. `severity` is `low`, `medium`, or
 `high`. `allow` is a list of literal strings; any match equal to an allow entry
 is dropped, which is how you whitelist public names that resemble internal ones.
+
+## Entropy detection
+
+Pattern rules catch known secret *shapes*. Entropy detection is the complementary
+net: it flags long, high-Shannon-entropy base64/hex-ish tokens that look random
+enough to be a credential even when no pattern matched. It is **off by default**
+(noisy by nature) and findings are **low severity**, so it never blocks a commit
+unless you opt in with `--fail-on low`.
+
+Enable it per-run with `--entropy`, or persistently via an `"entropy"` block in
+your private rules file:
+
+```json
+{ "entropy": { "enabled": true, "b64_threshold": 4.2, "severity": "low" } }
+```
+
+It honors the `allow` list, skips tokens already covered by a pattern match, and
+skips obvious false positives (lockfiles, subresource-integrity hashes, 40-char
+git object hashes).
 
 ## Optional AI layers (`leakguard[ai]`)
 
@@ -147,25 +210,44 @@ model unless you have explicitly decided otherwise.
 
 ## Pre-commit hook
 
+Plain git hook:
+
 ```
 ln -sf ../../hooks/pre-commit .git/hooks/pre-commit
 ```
 
-The hook scans staged content and blocks the commit on findings at or above
-`LEAKGUARD_FAIL_ON` (default `medium`). Bypass once with `git commit --no-verify`.
+Or via the [pre-commit framework](https://pre-commit.com) — add to your
+`.pre-commit-config.yaml`:
 
-## CI
+```yaml
+repos:
+  - repo: https://github.com/Yggdrasil-AI-labs/leakguard
+    rev: v0.2.0
+    hooks:
+      - id: leakguard
+```
 
-`.github/workflows/leakguard.yml` runs a scan on push and pull request. To use
-private patterns in CI, store the rules JSON as a repository secret and write it
-to `.leakguard.local.json` in a step before the scan (do not commit it).
+Both scan staged content and block the commit on findings at or above the
+threshold (default `medium`). Bypass once with `git commit --no-verify`.
+
+## CI and the GitHub Security tab
+
+`.github/workflows/leakguard.yml` runs a scan on push and pull request. It emits
+SARIF and uploads it with `github/codeql-action/upload-sarif`, so findings appear
+under the repository's **Security → Code scanning** tab (the workflow grants
+`security-events: write`). It also runs a gating scan that fails the job on
+findings at or above `medium`. To use private patterns in CI, store the rules
+JSON as a repository secret and write it to `.leakguard.local.json` in a step
+before the scan (do not commit it).
 
 ## Built-in patterns
 
-Cloud and service credentials (AWS, GCP, GitHub, Slack, Stripe), private-key
-blocks, JWTs, hard-coded secret assignments, RFC1918 and CGNAT IP addresses,
-Tailscale MagicDNS hostnames, and email addresses. Tune severities or disable the
-built-ins with `--no-builtin` and supply your own.
+Cloud and service credentials (AWS, GCP API keys, GCP service-account markers,
+GitHub, Slack, Stripe, npm, PyPI, Twilio, SendGrid, Azure Storage keys and SAS
+tokens), private-key blocks, JWTs, hard-coded secret assignments, Authorization
+headers, RFC1918 and CGNAT IP addresses, Tailscale MagicDNS hostnames, and email
+addresses. Tune severities or disable the built-ins with `--no-builtin` and supply
+your own.
 
 ## License
 

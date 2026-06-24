@@ -4,6 +4,7 @@ import os
 import subprocess
 
 from .engine import scan_text
+from .entropy import entropy_findings
 
 IGNORE_FILE = ".leakguardignore"
 
@@ -81,15 +82,16 @@ def iter_paths(paths, root=".", ignore=None):
                         yield fp
 
 
-def _apply(text, path, rules, allow, ai_hook):
-    """Regex findings plus, if enabled, the optional AI layers' findings."""
-    fs = scan_text(text, rules, allow, path=path)
+def _scan_one(text, rules, allow, path, entropy_opts=None, ai_hook=None):
+    findings = scan_text(text, rules, allow, path=path)
+    if entropy_opts and entropy_opts.enabled:
+        findings += entropy_findings(text, allow, path, entropy_opts, findings)
     if ai_hook is not None:
-        fs = fs + ai_hook(text, path, fs)
-    return fs
+        findings = findings + ai_hook(text, path, findings)
+    return findings
 
 
-def scan_paths(paths, rules, allow, root=".", ai_hook=None):
+def scan_paths(paths, rules, allow, root=".", entropy_opts=None, ai_hook=None):
     ignore = load_ignore(root)
     findings = []
     scanned = 0
@@ -100,7 +102,7 @@ def scan_paths(paths, rules, allow, root=".", ai_hook=None):
         if text is None:
             continue
         scanned += 1
-        findings.extend(_apply(text, path, rules, allow, ai_hook))
+        findings.extend(_scan_one(text, rules, allow, path, entropy_opts, ai_hook))
     return findings, scanned
 
 
@@ -113,7 +115,7 @@ def staged_files(cwd="."):
     return [f for f in r.stdout.split("\0") if f]
 
 
-def scan_staged(rules, allow, cwd=".", ai_hook=None):
+def scan_staged(rules, allow, cwd=".", entropy_opts=None, ai_hook=None):
     """Scan the STAGED content of files about to be committed (pre-commit use)."""
     findings = []
     scanned = 0
@@ -124,5 +126,5 @@ def scan_staged(rules, allow, cwd=".", ai_hook=None):
         if blob.returncode != 0:
             continue
         scanned += 1
-        findings.extend(_apply(blob.stdout, f, rules, allow, ai_hook))
+        findings.extend(_scan_one(blob.stdout, rules, allow, f, entropy_opts, ai_hook))
     return findings, scanned

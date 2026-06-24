@@ -1,18 +1,25 @@
 name: leakguard
 
 # Scan the repo on every push / PR. Catches leaks before (or right after) they
-# land. To scan with private org patterns in CI, store the rules JSON as a secret
-# and write it to .leakguard.local.json in a prior step (do NOT commit it).
+# land, and uploads SARIF so findings show up in the repo's Security tab. To scan
+# with private org patterns in CI, store the rules JSON as a secret and write it
+# to .leakguard.local.json in a prior step (do NOT commit it).
 on:
   push:
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write  # required to upload SARIF to code scanning
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history (lets you run `leakguard scan --history`)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -23,5 +30,13 @@ jobs:
         env:
           LEAKGUARD_RULES_JSON: ${{ secrets.LEAKGUARD_RULES_JSON }}
         run: printf '%s' "$LEAKGUARD_RULES_JSON" > .leakguard.local.json
-      - name: Scan working tree
+      - name: Generate SARIF report
+        continue-on-error: true  # don't let the report step gate; the scan step below does
+        run: leakguard scan . --format sarif > leakguard.sarif
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: leakguard.sarif
+      - name: Fail on findings at/above threshold
         run: leakguard scan . --fail-on medium
