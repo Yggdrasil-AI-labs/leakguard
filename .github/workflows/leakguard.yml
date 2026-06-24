@@ -35,7 +35,7 @@ jobs:
         run: leakguard scan . --format sarif > leakguard.sarif
       - name: Upload SARIF to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: leakguard.sarif
       - name: Fail on findings at/above threshold
