@@ -6,7 +6,9 @@
   leakguard github --org ACME    scan an org's public repos (post-publish audit)
 
 Add --entropy to any local scan to also flag high-entropy strings no pattern
-matched. Use --format sarif to emit SARIF 2.1.0 for GitHub code scanning.
+matched. Output formats: text (default), json, sarif (GitHub code scanning),
+md (a Markdown summary for a job summary / PR comment). --notify-webhook posts a
+summary to Slack/Discord/a generic webhook when findings hit the threshold.
 
 Optional AI layers (need the `leakguard[ai]` extra; see leakguard/ai.py):
   --presidio   add a Microsoft Presidio PII pass (local)
@@ -25,6 +27,8 @@ from .entropy import load_entropy_options
 from .fsscan import scan_paths, scan_staged
 from .github_scan import scan_github
 from .history import scan_history
+from .notify import notify, webhook_from_env
+from .report import build_markdown, build_summary_text
 from .sarif import build_sarif
 
 SEV_COLOR = {"high": "31", "medium": "33", "low": "36"}  # ansi red/yellow/cyan
@@ -51,6 +55,9 @@ def _emit(findings, scanned, label, fmt, fail_on, use_color):
     relevant = [f for f in findings if severity_at_least(f.severity, fail_on)]
     if fmt == "sarif":
         print(json.dumps(build_sarif(findings), indent=2))
+    elif fmt == "md":
+        print(build_markdown(findings, scanned, label, fail_on=fail_on,
+                             blocking=len(relevant)))
     elif fmt == "json":
         print(json.dumps({
             "label": label, "files_scanned": scanned,
@@ -76,8 +83,15 @@ def _add_common(p):
                    help="disable the built-in generic patterns")
     p.add_argument("--fail-on", choices=["low", "medium", "high"], default="medium",
                    help="minimum severity that causes a non-zero exit (default: medium)")
-    p.add_argument("--format", choices=["text", "json", "sarif"], default="text")
+    p.add_argument("--format", choices=["text", "json", "sarif", "md"], default="text")
     p.add_argument("--no-color", action="store_true")
+    p.add_argument("--notify-webhook", default="", metavar="URL",
+                   help="POST a summary to this webhook when findings hit the "
+                        "fail threshold (or set LEAKGUARD_WEBHOOK)")
+    p.add_argument("--notify-style", choices=["slack", "discord", "generic"],
+                   default=None,
+                   help="webhook payload style (default slack, or "
+                        "LEAKGUARD_WEBHOOK_STYLE)")
     p.add_argument("--presidio", action="store_true",
                    help="add a Microsoft Presidio PII pass (needs leakguard[ai])")
     p.add_argument("--review", action="store_true",
@@ -177,7 +191,15 @@ def main(argv=None):
         for e in errors[:10]:
             print(f"leakguard: scan note: {e}", file=sys.stderr)
 
-    return _emit(findings, scanned, label, args.format, args.fail_on, use_color)
+    rc = _emit(findings, scanned, label, args.format, args.fail_on, use_color)
+
+    # Push a notification when findings hit the fail threshold (rc == 1). Opt-in:
+    # only fires if a webhook is configured. Never changes the exit code.
+    webhook = args.notify_webhook or webhook_from_env()
+    if webhook and rc == 1:
+        notify(webhook, build_summary_text(findings, scanned, label),
+               findings, style=args.notify_style)
+    return rc
 
 
 if __name__ == "__main__":

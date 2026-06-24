@@ -1,5 +1,7 @@
 # leakguard
 
+[![leakguard](https://github.com/Yggdrasil-AI-labs/leakguard/actions/workflows/leakguard.yml/badge.svg)](https://github.com/Yggdrasil-AI-labs/leakguard/actions/workflows/leakguard.yml)
+
 Catch internal identifiers, secrets, and PII before they leak into public
 artifacts. leakguard scans local files, git staged content (as a pre-commit
 hook), the full git history, and already-published GitHub repos, then reports
@@ -102,8 +104,10 @@ leakguard github --repo owner/name --repo owner/other
 
 Exit code is `0` when clean (or only findings below the threshold) and `1` when
 there are findings at or above `--fail-on` (default `medium`), which is what makes
-it usable as a CI gate. `--format json` emits machine-readable output, and
-`--format sarif` emits SARIF 2.1.0 for GitHub code scanning.
+it usable as a CI gate. `--format json` emits machine-readable output, `--format
+sarif` emits SARIF 2.1.0 for GitHub code scanning, and `--format md` emits a
+Markdown summary for a job summary or PR comment. See **Reporting & alerts** below
+for how findings reach people.
 
 ## Private rules
 
@@ -222,7 +226,7 @@ Or via the [pre-commit framework](https://pre-commit.com) — add to your
 ```yaml
 repos:
   - repo: https://github.com/Yggdrasil-AI-labs/leakguard
-    rev: v0.2.0
+    rev: v0.3.0
     hooks:
       - id: leakguard
 ```
@@ -230,15 +234,52 @@ repos:
 Both scan staged content and block the commit on findings at or above the
 threshold (default `medium`). Bypass once with `git commit --no-verify`.
 
-## CI and the GitHub Security tab
+## CI
 
-`.github/workflows/leakguard.yml` runs a scan on push and pull request. It emits
-SARIF and uploads it with `github/codeql-action/upload-sarif`, so findings appear
-under the repository's **Security → Code scanning** tab (the workflow grants
-`security-events: write`). It also runs a gating scan that fails the job on
-findings at or above `medium`. To use private patterns in CI, store the rules
-JSON as a repository secret and write it to `.leakguard.local.json` in a step
-before the scan (do not commit it).
+`.github/workflows/leakguard.yml` runs a scan on every push and pull request and
+runs a gating scan that fails the job on findings at or above `medium`. To use
+private patterns in CI, store the rules JSON as a `LEAKGUARD_RULES_JSON`
+repository secret; the workflow writes it to `.leakguard.local.json` at runtime
+(it is never committed).
+
+## Reporting & alerts — how you find out
+
+A scanner is only useful if someone learns when it trips. leakguard surfaces a
+finding four ways; the bundled workflow wires up the first three out of the box.
+
+- **Exit code** — `1` when any finding is at or above `--fail-on` (default
+  `medium`), else `0`. This is what fails a CI job or blocks a commit.
+- **Job summary** — `leakguard scan . --format md` prints a findings table; the
+  workflow appends it to `$GITHUB_STEP_SUMMARY`, so every Actions run page shows
+  it at a glance (matched values are redacted).
+- **Pull-request comment** — the workflow posts and updates one sticky comment
+  with that table on each PR, so reviewers see leaks inline.
+- **SARIF / Security tab** — `--format sarif`, uploaded via
+  `github/codeql-action/upload-sarif`; alerts show under **Security → Code
+  scanning**.
+- **Webhook push** — `--notify-webhook <url>` (or the `LEAKGUARD_WEBHOOK` env
+  var) POSTs a summary to Slack, Discord, or a generic webhook when findings hit
+  the threshold. Stdlib only; meant for scheduled/cron scans with no PR to
+  comment on. Pick the shape with `--notify-style slack|discord|generic` (or
+  `LEAKGUARD_WEBHOOK_STYLE`).
+
+### Permissions and tokens you need
+
+The bundled workflow already requests these. If you wire leakguard into your own
+workflow, you must grant them yourself — the automatic `GITHUB_TOKEN` Actions
+injects is **read-only by default**, so the `write` scopes below are required.
+
+| Surface | Requires | Notes |
+| --- | --- | --- |
+| Exit code / job summary | nothing | works out of the box |
+| SARIF → Security tab | `permissions: security-events: write` | GitHub-hosted code scanning |
+| PR comment | `permissions: pull-requests: write` | uses the built-in `GITHUB_TOKEN`; no PAT or extra secret |
+| Webhook push | a `LEAKGUARD_WEBHOOK` secret (your incoming-webhook URL) | uncomment the "Notify webhook" step to enable |
+| Private org rules | a `LEAKGUARD_RULES_JSON` secret | written to `.leakguard.local.json` at runtime, never committed |
+
+You never create or store a personal access token for the PR comment or SARIF
+upload — both ride the `GITHUB_TOKEN` GitHub injects automatically. You only have
+to grant it the `write` scopes above in the workflow's `permissions:` block.
 
 ## Built-in patterns
 
