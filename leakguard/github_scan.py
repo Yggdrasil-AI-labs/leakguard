@@ -103,7 +103,8 @@ def _list_files(full_name, branch):
     return files, None
 
 
-def scan_github(rules, allow, orgs=None, users=None, repos=None, include_private=False):
+def scan_github(rules, allow, orgs=None, users=None, repos=None,
+                include_private=False, ai_hook=None):
     """Returns (findings, repo_count, files_scanned, errors)."""
     repolist, errors = list_repos(orgs, users, repos, include_private)
     findings, files_scanned = [], 0
@@ -118,6 +119,9 @@ def scan_github(rules, allow, orgs=None, users=None, repos=None, include_private
                 errors.append(f"raw {full_name}/{path}: {rerr}")
                 continue
             files_scanned += 1
-            for f in scan_text(text, rules, allow, path=f"{full_name}:{path}"):
-                findings.append(f)
+            label = f"{full_name}:{path}"
+            fs = scan_text(text, rules, allow, path=label)
+            if ai_hook is not None:
+                fs = fs + ai_hook(text, label, fs)
+            findings.extend(fs)
     return findings, len(repolist), files_scanned, errors

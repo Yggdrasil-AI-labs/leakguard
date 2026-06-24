@@ -81,7 +81,15 @@ def iter_paths(paths, root=".", ignore=None):
                         yield fp
 
 
-def scan_paths(paths, rules, allow, root="."):
+def _apply(text, path, rules, allow, ai_hook):
+    """Regex findings plus, if enabled, the optional AI layers' findings."""
+    fs = scan_text(text, rules, allow, path=path)
+    if ai_hook is not None:
+        fs = fs + ai_hook(text, path, fs)
+    return fs
+
+
+def scan_paths(paths, rules, allow, root=".", ai_hook=None):
     ignore = load_ignore(root)
     findings = []
     scanned = 0
@@ -92,7 +100,7 @@ def scan_paths(paths, rules, allow, root="."):
         if text is None:
             continue
         scanned += 1
-        findings.extend(scan_text(text, rules, allow, path=path))
+        findings.extend(_apply(text, path, rules, allow, ai_hook))
     return findings, scanned
 
 
@@ -105,7 +113,7 @@ def staged_files(cwd="."):
     return [f for f in r.stdout.split("\0") if f]
 
 
-def scan_staged(rules, allow, cwd="."):
+def scan_staged(rules, allow, cwd=".", ai_hook=None):
     """Scan the STAGED content of files about to be committed (pre-commit use)."""
     findings = []
     scanned = 0
@@ -116,5 +124,5 @@ def scan_staged(rules, allow, cwd="."):
         if blob.returncode != 0:
             continue
         scanned += 1
-        findings.extend(scan_text(blob.stdout, rules, allow, path=f))
+        findings.extend(_apply(blob.stdout, f, rules, allow, ai_hook))
     return findings, scanned

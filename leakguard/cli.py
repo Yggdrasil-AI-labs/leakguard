@@ -4,6 +4,10 @@
   leakguard scan --staged        scan git staged content (pre-commit hook)
   leakguard github --org ACME    scan an org's public repos (post-publish audit)
 
+Optional AI layers (need the `leakguard[ai]` extra; see leakguard/ai.py):
+  --presidio   add a Microsoft Presidio PII pass (local)
+  --review     ask a LOCAL OpenAI-compatible LLM to flag misses (local-first)
+
 Exit codes: 0 = clean / below threshold, 1 = findings at-or-above --fail-on,
 2 = usage/config error. Detection only; leakguard never edits your content.
 """
@@ -64,6 +68,20 @@ def _add_common(p):
                    help="minimum severity that causes a non-zero exit (default: medium)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.add_argument("--no-color", action="store_true")
+    p.add_argument("--presidio", action="store_true",
+                   help="add a Microsoft Presidio PII pass (needs leakguard[ai])")
+    p.add_argument("--review", action="store_true",
+                   help="ask a LOCAL OpenAI-compatible LLM to flag missed leaks "
+                        "(configure via LEAKGUARD_LLM_BASE / LEAKGUARD_LLM_MODEL)")
+
+
+def _build_ai_hook(args, allow):
+    """Construct the optional per-file AI hook, or None. Imported lazily so the
+    zero-dependency core is untouched when the AI flags are not used."""
+    if not (getattr(args, "presidio", False) or getattr(args, "review", False)):
+        return None
+    from . import ai
+    return ai.make_hook(args.presidio, args.review, allow)
 
 
 def main(argv=None):
@@ -102,19 +120,23 @@ def main(argv=None):
               file=sys.stderr)
         return 2
 
+    ai_hook = _build_ai_hook(args, allow)
+
     if args.cmd == "scan":
         if args.staged:
-            findings, scanned = scan_staged(rules, allow)
+            findings, scanned = scan_staged(rules, allow, ai_hook=ai_hook)
             label = "git staged"
         else:
-            findings, scanned = scan_paths(args.paths, rules, allow, root=scan_root)
+            findings, scanned = scan_paths(args.paths, rules, allow,
+                                           root=scan_root, ai_hook=ai_hook)
             label = "filesystem"
     else:  # github
         if not (args.org or args.user or args.repo):
             print("leakguard github: need --org, --user, or --repo", file=sys.stderr)
             return 2
         findings, repos, scanned, errors = scan_github(
-            rules, allow, args.org, args.user, args.repo, args.include_private)
+            rules, allow, args.org, args.user, args.repo, args.include_private,
+            ai_hook=ai_hook)
         label = f"{repos} repo(s)"
         for e in errors[:10]:
             print(f"leakguard: scan note: {e}", file=sys.stderr)
