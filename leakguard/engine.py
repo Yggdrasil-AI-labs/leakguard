@@ -44,6 +44,7 @@ class Finding:
     message: str
     suggestion: str
     commit: str = ""  # short SHA when produced by a git-history scan; "" otherwise
+    verified: str = ""  # set by --verify: active | inactive | unknown; "" if not checked
 
     def as_dict(self):
         return asdict(self)

@@ -67,8 +67,13 @@ def _result(f, index):
             "leakguard/v1": "%s:%s:%s:%s" % (f.rule_id, f.path, f.line, red)
         },
     }
+    props = {}
     if getattr(f, "commit", ""):
-        result["properties"] = {"commit": f.commit}
+        props["commit"] = f.commit
+    if getattr(f, "verified", ""):
+        props["verified"] = f.verified
+    if props:
+        result["properties"] = props
     return result
 
 

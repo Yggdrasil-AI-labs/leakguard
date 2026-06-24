@@ -12,6 +12,7 @@ from .sarif import redact
 
 _SEV_RANK = {"high": 0, "medium": 1, "low": 2}
 _EMOJI = {"high": "\U0001F534", "medium": "\U0001F7E0", "low": "\U0001F7E1"}  # red/orange/yellow
+_VMARK = {"active": " ✅ live", "inactive": " ⚪ dead", "unknown": " ❓"}
 
 
 def _counts_line(findings):
@@ -38,6 +39,10 @@ def build_markdown(findings, scanned, label, fail_on=None, blocking=None, title=
                 f"No findings across {scanned} file(s) scanned ({label}).\n")
     out = [f"## \U0001F6E1️ {title}: {n} finding(s) across {scanned} file(s) "
            f"({label})", "", _counts_line(findings), ""]
+    active = sum(1 for f in findings if getattr(f, "verified", "") == "active")
+    if active:
+        out.append(f"**\U0001F525 {active} verified ACTIVE (live credential(s) — rotate now).**")
+        out.append("")
     if fail_on is not None and blocking is not None:
         if blocking:
             out.append(f"**{blocking} finding(s) at or above `{fail_on}` — failing.**")
@@ -49,7 +54,7 @@ def build_markdown(findings, scanned, label, fail_on=None, blocking=None, title=
     for f in sorted(findings, key=lambda x: (_SEV_RANK.get(x.severity, 1), x.path, x.line)):
         cells = [
             f"{_EMOJI.get(f.severity, '')} {f.severity}",
-            f"`{f.rule_id}`",
+            f"`{f.rule_id}`" + _VMARK.get(getattr(f, "verified", ""), ""),
             f"`{_loc(f)}`",
             f"`{redact(f.match)}`",
             (f.suggestion or ""),
@@ -68,7 +73,8 @@ def build_summary_text(findings, scanned, label, limit=20, title="leakguard"):
              _counts_line(findings)]
     ordered = sorted(findings, key=lambda x: (_SEV_RANK.get(x.severity, 1), x.path, x.line))
     for f in ordered[:limit]:
-        lines.append(f"• [{f.severity.upper()}] {f.rule_id}  {_loc(f)}  {redact(f.match)}")
+        live = " ✅LIVE" if getattr(f, "verified", "") == "active" else ""
+        lines.append(f"• [{f.severity.upper()}] {f.rule_id}  {_loc(f)}  {redact(f.match)}{live}")
     if n > limit:
         lines.append(f"… and {n - limit} more")
     return "\n".join(lines)

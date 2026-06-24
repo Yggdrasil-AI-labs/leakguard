@@ -96,7 +96,8 @@ def _print_text(findings, scanned, label, use_color):
             if use_color:
                 sev = f"\033[{SEV_COLOR.get(f.severity, '0')}m{sev}\033[0m"
             commit = f" @{f.commit}" if getattr(f, "commit", "") else ""
-            print(f"  {f.line}:{f.column} [{sev}] {f.rule_id}{commit}: {f.match}"
+            ver = f" [verified: {f.verified}]" if getattr(f, "verified", "") else ""
+            print(f"  {f.line}:{f.column} [{sev}] {f.rule_id}{commit}{ver}: {f.match}"
                   + (f"  -> {f.suggestion}" if f.suggestion else ""))
     n = len(findings)
     print(f"\nleakguard: {n} finding(s) across {scanned} file(s) scanned ({label}).")
@@ -143,6 +144,9 @@ def _add_common(p):
                    default=None,
                    help="webhook payload style (default slack, or "
                         "LEAKGUARD_WEBHOOK_STYLE)")
+    p.add_argument("--verify", action="store_true",
+                   help="for supported credential types, call the provider to check "
+                        "if the secret is live (network; off by default)")
     p.add_argument("--presidio", action="store_true",
                    help="add a Microsoft Presidio PII pass (needs leakguard[ai])")
     p.add_argument("--review", action="store_true",
@@ -266,6 +270,13 @@ def main(argv=None):
         before = len(findings)
         findings = filter_new(findings, base)
         label += f" vs baseline ({before - len(findings)} known suppressed)"
+
+    if getattr(args, "verify", False) and findings:
+        from .verify import verify_findings
+        vc = verify_findings(findings)
+        if vc.get("active"):
+            print(f"leakguard: {vc['active']} finding(s) VERIFIED ACTIVE — live "
+                  f"credential(s), rotate now.", file=sys.stderr)
 
     rc = _emit(findings, scanned, label, args.format, args.fail_on, use_color)
 

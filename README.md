@@ -51,7 +51,7 @@ pass and a local-LLM reviewer on top of the regex engine; see below.
 | Baseline (adopt a dirty repo, alert only on new) | yes | partial | no | yes |
 | Git-history scan | yes | yes | yes | yes |
 | Entropy detection | yes (opt-in) | yes | yes | yes |
-| Live credential verification | not yet | no | yes | no |
+| Live credential verification | opt-in (~10 providers) | no | yes (800+) | no |
 | **Local-LLM semantic review** | **yes** | no | no | no |
 | SARIF / GitHub code scanning | yes | yes | partial | no |
 | pre-commit framework hook | yes | yes | yes | yes |
@@ -134,6 +134,13 @@ Scaffold a private rules file (writes `.leakguard.local.json` and gitignores it)
 leakguard init
 ```
 
+Check whether matched credentials are actually **live** (opt-in; makes network
+calls only for supported types):
+
+```
+leakguard scan . --verify
+```
+
 Exit code is `0` when clean (or only findings below the threshold) and `1` when
 there are findings at or above `--fail-on` (default `medium`), which is what makes
 it usable as a CI gate. `--format json` emits machine-readable output, `--format
@@ -180,6 +187,23 @@ your private rules file:
 It honors the `allow` list, skips tokens already covered by a pattern match, and
 skips obvious false positives (lockfiles, subresource-integrity hashes, 40-char
 git object hashes).
+
+## Verification (`--verify`)
+
+By default leakguard tells you a string *looks* like a credential. `--verify` goes
+one step further for a small set of high-signal providers: it asks the provider
+whether the credential is **live right now**, so you can tell an active leak from a
+long-dead one. It is opt-in, makes network calls only for supported types, and
+never changes the exit code — it annotates findings:
+
+- `active` — the provider accepted it; rotate immediately.
+- `inactive` — the provider returned 401; likely already revoked.
+- `unknown` — network error, rate limit, or an ambiguous response.
+
+Supported today: GitHub (classic + fine-grained), GitLab, Slack, Stripe, SendGrid,
+npm, OpenAI, Anthropic, and Hugging Face. Other types are left unverified. AWS and
+GCP (which need request signing) are deferred. Stdlib `urllib` only — no new
+dependencies, and nothing is sent anywhere except the credential's own provider.
 
 ## Optional AI layers (`leakguard[ai]`)
 
