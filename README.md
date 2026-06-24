@@ -45,7 +45,7 @@ pass and a local-LLM reviewer on top of the regex engine; see below.
 
 | | leakguard | gitleaks | trufflehog | detect-secrets |
 |---|---|---|---|---|
-| Generic secret detectors | ~55 | ~140 | 800+ | curated |
+| Generic secret detectors | ~63 | ~140 | 800+ | curated |
 | **Private org-identifier rules, kept out of the repo** | **yes** | no | no | no |
 | **Disclosure / PII (hostnames, project names, people)** | **yes** | partial | no | partial |
 | Baseline (adopt a dirty repo, alert only on new) | yes | partial | no | yes |
@@ -339,7 +339,7 @@ to grant it the `write` scopes above in the workflow's `permissions:` block.
 
 ## Built-in patterns
 
-Around 55 generic detectors, including: cloud credentials (AWS, GCP API keys and
+Around 63 generic detectors, including: cloud credentials (AWS, GCP API keys and
 service-account markers, Azure Storage keys and SAS tokens, DigitalOcean);
 source-control and registry tokens (GitHub classic and fine-grained PATs, GitLab
 PATs, npm, PyPI); SaaS and AI-provider keys (Anthropic, OpenAI, Hugging Face,
