@@ -45,18 +45,28 @@ pass and a local-LLM reviewer on top of the regex engine; see below.
 
 | | leakguard | gitleaks | trufflehog | detect-secrets |
 |---|---|---|---|---|
-| Generic secret patterns | yes | yes | yes | yes |
+| Generic secret detectors | ~40 | ~140 | 800+ | curated |
 | **Private org-identifier rules, kept out of the repo** | **yes** | no | no | no |
-| Disclosure / PII (hostnames, project names, people) | yes | partial | no | partial |
+| **Disclosure / PII (hostnames, project names, people)** | **yes** | partial | no | partial |
+| Baseline (adopt a dirty repo, alert only on new) | yes | partial | no | yes |
 | Git-history scan | yes | yes | yes | yes |
 | Entropy detection | yes (opt-in) | yes | yes | yes |
+| Live credential verification | not yet | no | yes | no |
+| **Local-LLM semantic review** | **yes** | no | no | no |
 | SARIF / GitHub code scanning | yes | yes | partial | no |
 | pre-commit framework hook | yes | yes | yes | yes |
 | Core runtime dependencies | **none** | Go binary | Go binary | Python deps |
 
-leakguard is not trying to out-detect the big scanners on raw credential shapes.
-The point is the private-inventory model and disclosure coverage, in a single
-stdlib-only core you can read end to end and drop into any CI.
+leakguard is not trying to out-detect the big scanners on raw credential breadth —
+trufflehog (800+ detectors, with live verification) and gitleaks own that. The
+point is the **private-inventory model and disclosure coverage**: catching the
+internal hostname, the unreleased project name, the person — the attribution trail
+a clean-looking public artifact still carries — with the rule list kept private,
+in a single stdlib-only core you can read end to end and drop into any CI.
+
+**Who it's for:** anyone publishing *from* a private environment — open-sourcing
+an internal tool, writing a blog post or docs, or reviewing AI-generated output —
+who needs to catch internal identifiers and secrets before they go public.
 
 ## Install
 
@@ -107,6 +117,21 @@ Audit published repos read-only (an org, a user, or specific repos):
 ```
 leakguard github --org your-org
 leakguard github --repo owner/name --repo owner/other
+```
+
+Adopt leakguard into a repo that already has findings — snapshot them as a
+baseline, then get alerted only on *new* leaks (the baseline stores hashes, never
+the secrets, so it is safe to commit):
+
+```
+leakguard scan . --baseline .leakguard-baseline.json --update-baseline   # snapshot
+leakguard scan . --baseline .leakguard-baseline.json                     # only new
+```
+
+Scaffold a private rules file (writes `.leakguard.local.json` and gitignores it):
+
+```
+leakguard init
 ```
 
 Exit code is `0` when clean (or only findings below the threshold) and `1` when
@@ -290,12 +315,17 @@ to grant it the `write` scopes above in the workflow's `permissions:` block.
 
 ## Built-in patterns
 
-Cloud and service credentials (AWS, GCP API keys, GCP service-account markers,
-GitHub, Slack, Stripe, npm, PyPI, Twilio, SendGrid, Azure Storage keys and SAS
-tokens), private-key blocks, JWTs, hard-coded secret assignments, Authorization
-headers, RFC1918 and CGNAT IP addresses, Tailscale MagicDNS hostnames, and email
-addresses. Tune severities or disable the built-ins with `--no-builtin` and supply
-your own.
+Around 40 generic detectors, including: cloud credentials (AWS, GCP API keys and
+service-account markers, Azure Storage keys and SAS tokens, DigitalOcean);
+source-control and registry tokens (GitHub classic and fine-grained PATs, GitLab
+PATs, npm, PyPI); SaaS and AI-provider keys (Anthropic, OpenAI, Hugging Face,
+Stripe, Twilio, SendGrid, Mailchimp, Google OAuth, Square, Shopify, Postman,
+Notion, Dropbox, Telegram, Slack and Discord tokens/webhooks); private-key blocks,
+JWTs, database connection URIs and basic-auth URLs with embedded credentials,
+hard-coded secret assignments, and Authorization headers; RFC1918 and CGNAT IP
+addresses, Tailscale MagicDNS hostnames, and email addresses. Tune severities or
+disable the built-ins with `--no-builtin` and supply your own. (Breadth is not the
+goal — see **How it compares**; the private-rules model is.)
 
 ## License
 

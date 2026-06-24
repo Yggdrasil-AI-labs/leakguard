@@ -19,6 +19,7 @@ Exit codes: 0 = clean / below threshold, 1 = findings at-or-above --fail-on,
 """
 import argparse
 import json
+import os
 import sys
 
 from . import __version__
@@ -32,6 +33,56 @@ from .report import build_markdown, build_summary_text
 from .sarif import build_sarif
 
 SEV_COLOR = {"high": "31", "medium": "33", "low": "36"}  # ansi red/yellow/cyan
+
+INIT_TEMPLATE = """{
+  "_comment": [
+    "Your PRIVATE leakguard rules. This file is gitignored and must NEVER be",
+    "committed - it is the inventory of internal identifiers you do not want to",
+    "leak. leakguard auto-loads it from the repo root. Replace the placeholders",
+    "below with your real internal hostnames, project codenames, people, paths,",
+    "etc. Fields: id, pattern (Python regex), severity (low|medium|high),",
+    "message, suggestion, flags (any of i,m,s). 'allow' is literal strings to",
+    "drop (public names that resemble internal ones)."
+  ],
+  "rules": [
+    {"id": "internal-hostname", "pattern": "\\\\bacme-[a-z]{2,}[0-9]{2,}\\\\b",
+     "severity": "high", "message": "internal hostname",
+     "suggestion": "use a public codename", "flags": "i"},
+    {"id": "private-project", "pattern": "\\\\b(?:project-falcon|widgetizer)\\\\b",
+     "severity": "high", "message": "unreleased internal project name",
+     "suggestion": "remove the reference"}
+  ],
+  "allow": ["acme-public-handle"],
+  "entropy": {"enabled": false, "severity": "low"}
+}
+"""
+
+
+def _do_init(path):
+    """Write a starter private rules file and make sure it is gitignored."""
+    if os.path.exists(path):
+        print(f"leakguard: {path} already exists; leaving it untouched")
+    else:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(INIT_TEMPLATE)
+        print(f"leakguard: wrote starter private rules -> {path}")
+    base = os.path.basename(path)
+    gi = ".gitignore"
+    try:
+        existing = ""
+        if os.path.exists(gi):
+            with open(gi, "r", encoding="utf-8") as fh:
+                existing = fh.read()
+        if base not in existing.split():
+            with open(gi, "a", encoding="utf-8") as fh:
+                if existing and not existing.endswith("\n"):
+                    fh.write("\n")
+                fh.write(base + "\n")
+            print(f"leakguard: added {base} to {gi}")
+    except OSError as e:
+        print(f"leakguard: could not update {gi}: {e}", file=sys.stderr)
+    print("leakguard: edit it with your org's internal identifiers (it stays local).")
+    return 0
 
 
 def _print_text(findings, scanned, label, use_color):
@@ -126,6 +177,10 @@ def main(argv=None):
                     help="also flag high-entropy strings no pattern matched")
     sp.add_argument("--entropy-threshold", type=float, default=None, metavar="BITS",
                     help="min bits/char for a base64-ish token to count (default 4.0)")
+    sp.add_argument("--baseline", default=None, metavar="FILE",
+                    help="suppress findings recorded in this baseline; report only new ones")
+    sp.add_argument("--update-baseline", action="store_true",
+                    help="(re)write the --baseline file from the current findings, then exit")
     _add_common(sp)
 
     gh = sub.add_parser("github", help="scan published GitHub repos (read-only)")
@@ -135,7 +190,14 @@ def main(argv=None):
     gh.add_argument("--include-private", action="store_true")
     _add_common(gh)
 
+    ip = sub.add_parser("init", help="write a starter private rules file and gitignore it")
+    ip.add_argument("--path", default=".leakguard.local.json",
+                    help="where to write the private rules file (default .leakguard.local.json)")
+
     args = ap.parse_args(argv)
+
+    if args.cmd == "init":
+        return _do_init(args.path)
     use_color = (not args.no_color) and sys.stdout.isatty() and args.format == "text"
 
     try:
@@ -190,6 +252,20 @@ def main(argv=None):
         label = f"{repos} repo(s)"
         for e in errors[:10]:
             print(f"leakguard: scan note: {e}", file=sys.stderr)
+
+    if args.cmd == "scan" and getattr(args, "baseline", None):
+        from .baseline import load_baseline, write_baseline, filter_new
+        if args.update_baseline:
+            n = write_baseline(args.baseline, findings)
+            print(f"leakguard: wrote baseline with {n} fingerprint(s) -> {args.baseline}")
+            return 0
+        base, berr = load_baseline(args.baseline)
+        if berr:
+            print(f"leakguard: baseline load error: {berr}", file=sys.stderr)
+            return 2
+        before = len(findings)
+        findings = filter_new(findings, base)
+        label += f" vs baseline ({before - len(findings)} known suppressed)"
 
     rc = _emit(findings, scanned, label, args.format, args.fail_on, use_color)
 
