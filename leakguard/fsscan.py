@@ -17,7 +17,12 @@ TEXT_EXT = {
     ".dart", ".swift", ".sql", ".xml", ".svg", ".properties", ".log", ".eml",
     ".tf", ".tfvars", ".hcl", ".gradle", ".groovy", ".vue", ".svelte", ".ps1",
     ".psm1", ".bat", ".cmd", ".pem", ".key", ".crt", ".cer", ".pub", ".ovpn",
+    ".ipynb",
 }
+# Copy/backup/template suffixes: peel ONE of these and re-check the inner ext, so
+# e.g. config.yml.bak / .env.old / settings.py.orig are still scanned.
+BACKUP_SUFFIXES = {".bak", ".old", ".orig", ".tmp", ".save", ".dist", ".sample",
+                   ".example", ".inc", ".disabled"}
 TEXT_NAMES = {"readme", "license", "dockerfile", "containerfile", "makefile",
               "changelog", ".gitignore", ".dockerignore", "requirements.txt",
               ".env.example", ".npmrc", ".netrc", ".pgpass", ".htpasswd"}
@@ -30,7 +35,9 @@ def is_text(path):
     base = os.path.basename(path).lower()
     if base in TEXT_NAMES or base.startswith(("readme", "license")):
         return True
-    _, ext = os.path.splitext(base)
+    stem, ext = os.path.splitext(base)
+    if ext in BACKUP_SUFFIXES:  # peel a copy/backup suffix and re-check the inner ext
+        _, ext = os.path.splitext(stem)
     return ext in TEXT_EXT
 
 
