@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# leakguard pre-commit hook. Blocks a commit that introduces a leak.
+# Install:  ln -sf ../../hooks/pre-commit .git/hooks/pre-commit
+#   (or copy it; or use `pre-commit` framework via .pre-commit-config.yaml)
+#
+# Honors a private rules file automatically: .leakguard.local.json at the repo
+# root, or $LEAKGUARD_RULES. Override the blocking threshold with LEAKGUARD_FAIL_ON.
+set -euo pipefail
+
+FAIL_ON="${LEAKGUARD_FAIL_ON:-medium}"
+
+if command -v leakguard >/dev/null 2>&1; then
+  RUN=(leakguard)
+else
+  RUN=(python3 -m leakguard)
+fi
+
+if ! "${RUN[@]}" scan --staged --fail-on "$FAIL_ON"; then
+  echo ""
+  echo "leakguard blocked this commit (findings at/above '$FAIL_ON')."
+  echo "Fix the lines above, or if a match is a false positive add it to the"
+  echo "'allow' list in your private rules file. To bypass once: git commit --no-verify"
+  exit 1
+fi

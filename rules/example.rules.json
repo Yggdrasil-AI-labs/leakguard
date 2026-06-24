@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "TEMPLATE ONLY. Copy this to a PRIVATE, GITIGNORED file (e.g. .leakguard.local.json",
+    "at your repo root, or anywhere and point LEAKGUARD_RULES / --rules at it).",
+    "Put your real internal identifiers here - they must NOT be committed.",
+    "All values below are deliberately fake placeholders.",
+    "",
+    "Rule fields: id, pattern (Python regex), severity (low|medium|high),",
+    "message, suggestion, flags (any of i,m,s). 'allow' is a list of literal",
+    "strings; a match equal to an allow entry is dropped (e.g. public names that",
+    "look internal but are intentionally public)."
+  ],
+  "rules": [
+    {
+      "id": "internal-hostname",
+      "pattern": "\\bacme-[a-z]{2,}[0-9]{2,}\\b",
+      "severity": "high",
+      "message": "internal hostname",
+      "suggestion": "use a public codename or 'the app server'",
+      "flags": "i"
+    },
+    {
+      "id": "internal-service-user",
+      "pattern": "\\b(?:deploy-bot|svcacct)\\b",
+      "severity": "high",
+      "message": "internal service account name",
+      "suggestion": "use a generic service-user name"
+    },
+    {
+      "id": "private-tool-name",
+      "pattern": "\\b(?:project-falcon|widgetizer)\\b",
+      "severity": "high",
+      "message": "unreleased internal project name",
+      "suggestion": "remove reference to the private project"
+    },
+    {
+      "id": "internal-path",
+      "pattern": "/opt/acme/[\\w./-]+",
+      "severity": "medium",
+      "message": "internal deploy path",
+      "suggestion": "use a generic path"
+    },
+    {
+      "id": "operator-name",
+      "pattern": "\\b(?:Jane Q\\. Public|jqpublic)\\b",
+      "severity": "high",
+      "message": "operator legal name",
+      "suggestion": "use the public handle"
+    }
+  ],
+  "allow": [
+    "acme-public-handle",
+    "203.0.113.5"
+  ]
+}

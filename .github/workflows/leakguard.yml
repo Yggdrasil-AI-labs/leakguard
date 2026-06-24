@@ -1,0 +1,27 @@
+name: leakguard
+
+# Scan the repo on every push / PR. Catches leaks before (or right after) they
+# land. To scan with private org patterns in CI, store the rules JSON as a secret
+# and write it to .leakguard.local.json in a prior step (do NOT commit it).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install leakguard
+        run: pip install .
+      - name: Materialize private rules (optional)
+        if: ${{ env.LEAKGUARD_RULES_JSON != '' }}
+        env:
+          LEAKGUARD_RULES_JSON: ${{ secrets.LEAKGUARD_RULES_JSON }}
+        run: printf '%s' "$LEAKGUARD_RULES_JSON" > .leakguard.local.json
+      - name: Scan working tree
+        run: leakguard scan . --fail-on medium
