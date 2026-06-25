@@ -19,8 +19,10 @@ WINDOW = 30  # max chars between the provider keyword and the token, same line
 
 # (rule_id, keywords, token-shape regex (secret portion only), severity, message)
 KEYWORD_RULES = [
-    ("datadog-access-token", ["datadog"], r"[a-z0-9]{40}", "medium",
-     "Datadog access token near 'datadog'"),
+    ("datadog-api-key", ["datadog"], r"[a-f0-9]{32}", "high",
+     "Datadog API key near 'datadog'"),
+    ("datadog-app-key", ["datadog"], r"[a-f0-9]{40}", "high",
+     "Datadog app key near 'datadog'"),
     ("algolia-api-key", ["algolia"], r"[a-z0-9]{32}", "medium",
      "Algolia API/admin key near 'algolia'"),
     ("cloudflare-global-api-key", ["cloudflare"], r"[a-f0-9]{37}", "high",
@@ -34,6 +36,8 @@ KEYWORD_RULES = [
      "high", "JFrog/Artifactory API key near provider keyword"),
     ("jfrog-identity-token", ["jfrog", "artifactory", "bintray", "xray"], r"[a-z0-9]{64}",
      "high", "JFrog identity token near provider keyword"),
+    ("jfrog-reference-token", ["jfrog", "artifactory", "bintray", "xray"],
+     r"cmVmdGtu[A-Za-z0-9+/=_\-]{16,}", "high", "JFrog reference token near provider keyword"),
     ("facebook-app-secret", ["facebook"], r"[a-f0-9]{32}", "high",
      "Facebook app secret near 'facebook'"),
     ("mapbox-token", ["mapbox"], r"pk\.[a-z0-9]{60}\.[a-z0-9]{22}", "medium",

@@ -6,13 +6,15 @@ from leakguard.proximity import proximity_findings, KEYWORD_RULES
 
 # keyword -> a synthetic token of the right shape, per rule_id
 SAMPLES = {
-    "datadog-access-token": ("datadog", "a" * 40),
+    "datadog-api-key": ("datadog", "a" * 32),
+    "datadog-app-key": ("datadog", "a" * 40),
     "algolia-api-key": ("algolia", "a" * 32),
     "cloudflare-global-api-key": ("cloudflare", "a" * 37),
     "cloudflare-api-token": ("cloudflare", "a" * 40),
     "heroku-api-key": ("heroku", "12345678-1234-1234-1234-123456789012"),
     "jfrog-api-key": ("jfrog", "a" * 73),
     "jfrog-identity-token": ("artifactory", "a" * 64),
+    "jfrog-reference-token": ("jfrog", "cmVmdGtu" + "a" * 20),
     "facebook-app-secret": ("facebook", "a" * 32),
     "mapbox-token": ("mapbox", "pk." + "a" * 60 + "." + "a" * 22),
     "twitter-api-secret": ("twitter", "a" * 50),
@@ -36,7 +38,7 @@ class TestProximity(unittest.TestCase):
 
     def test_window_enforced(self):
         text = "datadog" + " " * 80 + "a" * 40  # keyword too far from token
-        hits = [f for f in proximity_findings(text) if f.rule_id == "datadog-access-token"]
+        hits = [f for f in proximity_findings(text) if f.rule_id == "datadog-app-key"]
         self.assertEqual(hits, [])
 
     def test_allow_list_honored(self):
