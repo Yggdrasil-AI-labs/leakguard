@@ -6,17 +6,10 @@ found. Each finding carries the short SHA of the earliest commit it was seen in,
 its path, and its line. Identical findings that survive across many commits are
 reported once.
 """
-import subprocess
-
 from .engine import scan_text
 from .entropy import entropy_findings
 from .proximity import proximity_findings
-from .fsscan import is_text, load_ignore, _ignored
-
-
-def _git(args, cwd="."):
-    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True,
-                          text=True, errors="replace")
+from .fsscan import is_text, load_ignore, _ignored, _git
 
 
 def is_git_repo(cwd="."):

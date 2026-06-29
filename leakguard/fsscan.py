@@ -122,7 +122,8 @@ def scan_paths(paths, rules, allow, root=".", entropy_opts=None, ai_hook=None,
 
 
 def _git(args, cwd="."):
-    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
+    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True,
+                          text=True, errors="replace")
 
 
 def staged_files(cwd="."):

@@ -10,11 +10,7 @@ import os
 import urllib.request
 
 from .engine import scan_text
-from .fsscan import is_text, TEXT_EXT  # reuse text heuristics
-
-MAX_BYTES = 800_000
-SKIP_DIRS = {".git", "node_modules", "vendor", "dist", "build", ".venv",
-             "__pycache__"}
+from .fsscan import is_text, MAX_BYTES, SKIP_DIRS  # reuse text + skip heuristics
 
 
 def _headers():
